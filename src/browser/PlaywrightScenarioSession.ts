@@ -10,7 +10,10 @@ import {
   openPlaywrightScenarioBrowser,
   type OpenedScenarioBrowser,
 } from "./PlaywrightScenarioBrowser.js";
-import { performPlaywrightScenarioAction } from "./PlaywrightScenarioActions.js";
+import {
+  performPlaywrightScenarioAction,
+  scenarioActionBoundaryMs,
+} from "./PlaywrightScenarioActions.js";
 import { capturePlaywrightStepArtifacts } from "./PlaywrightScenarioArtifacts.js";
 import { PlaywrightScenarioEvents } from "./PlaywrightScenarioEvents.js";
 import { PlaywrightScenarioStorage } from "./PlaywrightScenarioStorage.js";
@@ -362,7 +365,9 @@ export class PlaywrightScenarioSession implements BrowserScenarioSessionPort {
           action,
           secrets: this.secrets,
         }),
-      "timeout_ms" in action ? action.timeout_ms : undefined,
+      scenarioActionBoundaryMs(
+        "timeout_ms" in action ? action.timeout_ms : undefined,
+      ),
       signal,
     );
     await withPlaywrightExecutionBoundary(
