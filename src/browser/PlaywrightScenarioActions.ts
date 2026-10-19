@@ -6,6 +6,20 @@ import type {
 } from "../domain/browserScenarioValues.js";
 import type { BrowserScenarioSecrets } from "./BrowserScenarioSecrets.js";
 
+/**
+ * Extra time the outer execution boundary waits beyond an action's own
+ * Playwright timeout. With equal deadlines the boundary usually fired first and
+ * replaced Playwright's timeout error, whose call log explains why the action
+ * could not run (for example another element intercepting pointer events).
+ */
+export const ACTION_BOUNDARY_GRACE_MS = 2_000;
+
+/** Outer execution deadline for one action; undefined keeps it unbounded. */
+export const scenarioActionBoundaryMs = (
+  timeoutMs: number | undefined,
+): number | undefined =>
+  timeoutMs === undefined ? undefined : timeoutMs + ACTION_BOUNDARY_GRACE_MS;
+
 type ScenarioLocator = Extract<
   BrowserScenarioAction,
   { readonly locator: unknown }
