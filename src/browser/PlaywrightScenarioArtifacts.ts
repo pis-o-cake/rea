@@ -42,14 +42,20 @@ const textArtifact = (text: string) => {
   };
 };
 
-const captureScreenshot = async (page: Page) => {
+const captureScreenshot = async (
+  page: Page,
+  captureViewport: (() => Promise<Buffer>) | undefined,
+) => {
   try {
-    const bytes = await page.screenshot({
-      type: "png",
-      fullPage: false,
-      animations: "disabled",
-      caret: "hide",
-    });
+    const bytes =
+      captureViewport === undefined
+        ? await page.screenshot({
+            type: "png",
+            fullPage: false,
+            animations: "disabled",
+            caret: "hide",
+          })
+        : await captureViewport();
     const sha256 = createHash("sha256").update(bytes).digest("hex");
     return {
       state: "captured" as const,
@@ -185,8 +191,10 @@ export const capturePlaywrightStepArtifacts = async (input: {
   readonly page: Page;
   readonly secrets: BrowserScenarioSecrets;
   readonly requested: ReadonlySet<SnapshotKind>;
+  /** Replaces the Playwright screenshot for attached browsers. */
+  readonly captureViewport?: (() => Promise<Buffer>) | undefined;
 }): Promise<BrowserStepArtifacts> => {
-  const { context, page, secrets, requested } = input;
+  const { context, page, secrets, requested, captureViewport } = input;
   const state = <Value>(
     kind: SnapshotKind,
     capture: () => Promise<Value>,
@@ -194,7 +202,9 @@ export const capturePlaywrightStepArtifacts = async (input: {
     Value | ReturnType<typeof notRequested> | ReturnType<typeof missing>
   > => (!requested.has(kind) ? Promise.resolve(notRequested()) : capture());
   return browserStepArtifactsSchema.parse({
-    screenshot: await state("screenshot", () => captureScreenshot(page)),
+    screenshot: await state("screenshot", () =>
+      captureScreenshot(page, captureViewport),
+    ),
     dom: await state("dom", () => captureDom({ page, secrets })),
     accessibility: await state("accessibility", () =>
       captureAccessibility({ page, secrets }),

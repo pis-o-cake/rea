@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import type { BrowserContext, Page } from "playwright-core";
 
 import { browserScenarioSchema } from "../domain/browserScenario.js";
@@ -166,5 +166,25 @@ it("redacts a declared secret used as a cookie or storage name", async () => {
         { name: "theme", value_state: "redacted-secret", value_sha256: null },
       ],
     },
+  });
+});
+
+it("captures attached screenshots through the supplied viewport capture", async () => {
+  const screenshot = vi.fn(async () => Buffer.from("playwright"));
+  const captureViewport = vi.fn(async () => Buffer.from("environment"));
+
+  const result = await capturePlaywrightStepArtifacts({
+    context: {} as BrowserContext,
+    page: { screenshot } as unknown as Page,
+    secrets,
+    requested: new Set(["screenshot"]),
+    captureViewport,
+  });
+
+  expect(screenshot).not.toHaveBeenCalled();
+  expect(captureViewport).toHaveBeenCalledOnce();
+  expect(result.screenshot).toMatchObject({
+    state: "captured",
+    value: { data_base64: Buffer.from("environment").toString("base64") },
   });
 });

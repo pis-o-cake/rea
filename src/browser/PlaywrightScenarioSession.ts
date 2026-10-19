@@ -395,6 +395,7 @@ export class PlaywrightScenarioSession implements BrowserScenarioSessionPort {
           page: this.opened.page,
           secrets: this.secrets,
           requested,
+          captureViewport: this.opened.captureViewport,
         }),
       undefined,
       signal,
