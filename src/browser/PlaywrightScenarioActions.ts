@@ -78,6 +78,9 @@ export const performPlaywrightScenarioAction = async (
     case "uncheck":
       await resolveLocator(page, action.locator).uncheck(options);
       return;
+    case "hover":
+      await resolveLocator(page, action.locator).hover(options);
+      return;
     case "wait_for":
       await resolveLocator(page, action.locator).waitFor({
         ...options,

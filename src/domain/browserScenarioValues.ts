@@ -214,6 +214,11 @@ export const browserScenarioActionSchema = z.discriminatedUnion("action", [
   }),
   z.strictObject({
     ...stepBase,
+    action: z.literal("hover"),
+    locator: locatorSchema,
+  }),
+  z.strictObject({
+    ...stepBase,
     action: z.literal("wait_for"),
     locator: locatorSchema,
     state: z.enum(["attached", "detached", "visible", "hidden"]),
