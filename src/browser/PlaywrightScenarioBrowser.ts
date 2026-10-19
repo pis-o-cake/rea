@@ -32,6 +32,13 @@ export interface OpenedScenarioBrowser {
   readonly browser: Pick<Browser, "contexts" | "close" | "version">;
   readonly profilePath: string | undefined;
   readonly cleanup: PlaywrightScenarioBrowserCleanupOwner;
+  /**
+   * Captures the visible viewport through the session that owns the attached
+   * environment overrides. Playwright captures through its own CDP session;
+   * Chromium then drops device metrics that another session set, so later
+   * steps would lay out and capture at the caller window size.
+   */
+  readonly captureViewport?: () => Promise<Buffer>;
 }
 
 /** Provider actions retained until the owned browser and profile are released. */
@@ -403,6 +410,14 @@ class AttachedScenarioEnvironmentOwner {
     throwIfScenarioCancelled(signal);
   }
 
+  /** Capture the current viewport with this session's device metrics kept. */
+  async captureViewport(): Promise<Buffer> {
+    const { data } = await this.session.send("Page.captureScreenshot", {
+      format: "png",
+    });
+    return Buffer.from(data, "base64");
+  }
+
   async close(): Promise<void> {
     if (this.#detached) return;
     // The execution boundary can report cancellation before a pending CDP
@@ -600,6 +615,7 @@ const openAttachedScenarioBrowser = async (
       browser,
       profilePath: undefined,
       cleanup,
+      captureViewport: () => configuredEnvironment.captureViewport(),
     };
   } catch (cause: unknown) {
     if (cleanupOwner === undefined) {

@@ -322,6 +322,25 @@ const attachedBrowserFixture = (
   };
 };
 
+it("captures attached screenshots through the environment session", async () => {
+  const fixture = attachedBrowserFixture({
+    send: async (method) =>
+      method === "Page.captureScreenshot"
+        ? { data: Buffer.from("png").toString("base64") }
+        : undefined,
+  });
+  const opened = await fixture.open();
+
+  const bytes = await opened.captureViewport?.();
+
+  expect(bytes?.toString()).toBe("png");
+  expect(fixture.environmentSession.send).toHaveBeenCalledWith(
+    "Page.captureScreenshot",
+    { format: "png" },
+  );
+  await opened.cleanup.close();
+});
+
 it("restores its environment overrides before releasing an attached browser", async () => {
   const cleanupOrder: string[] = [];
   const fixture = attachedBrowserFixture({
