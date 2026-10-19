@@ -262,6 +262,55 @@ external browser without closing it. The request itself defines the operation;
 there is no additional REA grant step. The browser and host still enforce their
 own access and process rules.
 
+## Drag example: capture the page mid-drag
+
+`drag_start`, `drag_move`, and `drag_end` hold the left button across steps, so
+`after_each_step` captures record the page while the drag is in progress (drop
+indicators, placeholders, dragged-item styling). `drag_start` presses on a
+locator point (the center, or `offset` from the element's top-left corner) and
+moves `threshold_px` (default 8) so drag libraries recognize the gesture.
+`drag_move` moves to a locator point or by a `delta` from the current pointer
+in `steps` intermediate moves (default 10). `drag_end` either drops (`mode:
+"drop"`) or presses Escape before releasing (`mode: "cancel"`), which aborts
+both HTML5 drag and drop and pointer-driven drags without a drop.
+
+```json
+{
+  "browser": {
+    "mode": "launch",
+    "executable_path": "/absolute/path/to/chromium"
+  },
+  "start_url": { "url": "http://127.0.0.1:3000/board" },
+  "actions": [
+    {
+      "step_id": "lift",
+      "action": "drag_start",
+      "locator": { "kind": "css", "selector": "[data-card='A-1']" },
+      "timeout_ms": 5000
+    },
+    {
+      "step_id": "over-done",
+      "action": "drag_move",
+      "target": {
+        "kind": "locator",
+        "locator": { "kind": "css", "selector": "[data-column='done']" }
+      },
+      "timeout_ms": 5000
+    },
+    { "step_id": "abort", "action": "drag_end", "mode": "cancel" }
+  ],
+  "capture": { "after_each_step": ["screenshot", "dom"] }
+}
+```
+
+Drag actions must nest: `drag_move` and `drag_end` require an earlier
+`drag_start`, and a new `drag_start` requires the previous drag to end. If a
+step fails while a drag is held, the session cancels that drag before closing
+or disconnecting, so an attached browser is not left with the button pressed
+and does not receive a drop. HTML5 drag and drop runs through Playwright's
+Chromium drag interception: `dragover` fires on each move, but no operating
+system drag image is drawn in screenshots.
+
 ## Network evidence
 
 `capture.events: ["network"]` retains request, response, completion, failure,
