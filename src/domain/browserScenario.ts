@@ -101,6 +101,34 @@ const validateSecretReferences = (
       );
 };
 
+/** A drag holds the pointer button across steps, so its actions must nest. */
+const validateDragSequence = (
+  actions: readonly BrowserScenarioAction[],
+  context: z.RefinementCtx,
+): void => {
+  let dragging = false;
+  actions.forEach((action, index) => {
+    if (action.action === "drag_start") {
+      if (dragging)
+        addIssue(
+          context,
+          ["actions", index],
+          "drag_start requires the previous drag to end with drag_end",
+        );
+      dragging = true;
+      return;
+    }
+    if (action.action !== "drag_move" && action.action !== "drag_end") return;
+    if (!dragging)
+      addIssue(
+        context,
+        ["actions", index],
+        `${action.action} requires an earlier drag_start`,
+      );
+    if (action.action === "drag_end") dragging = false;
+  });
+};
+
 const validateBrowserScenario = (
   scenario: ScenarioShape,
   context: z.RefinementCtx,
@@ -123,6 +151,8 @@ const validateBrowserScenario = (
     "Secret environment variables",
     context,
   );
+
+  validateDragSequence(scenario.actions, context);
 
   const references = scenario.actions.flatMap(actionSecretReferences);
   references.push(...destinationSecretReferences(scenario.start_url));

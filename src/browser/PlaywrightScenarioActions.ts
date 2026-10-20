@@ -44,6 +44,107 @@ const resolveValue = (
   secrets: BrowserScenarioSecrets,
 ): string => secrets.value(value);
 
+interface PointerPoint {
+  readonly x: number;
+  readonly y: number;
+}
+
+type PointerOffset = Extract<
+  BrowserScenarioAction,
+  { readonly action: "drag_start" }
+>["offset"];
+
+/**
+ * Pointer position of a drag whose button is still held, per page. A drag spans
+ * several steps so captures can run mid-drag; the session releases any entry
+ * left behind by a failed scenario.
+ */
+const activeDrags = new WeakMap<Page, PointerPoint>();
+
+const locatorPoint = async (
+  locator: Locator,
+  offset: PointerOffset,
+  options: { readonly timeout?: number },
+): Promise<PointerPoint> => {
+  const box = await locator.boundingBox(options);
+  if (box === null) throw new Error("Drag target has no visible box");
+  return offset === undefined
+    ? { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    : { x: box.x + offset.x, y: box.y + offset.y };
+};
+
+const heldDrag = (page: Page, action: string): PointerPoint => {
+  const point = activeDrags.get(page);
+  if (point === undefined)
+    throw new Error(`${action} requires an active drag from drag_start`);
+  return point;
+};
+
+const startDrag = async (
+  page: Page,
+  action: Extract<BrowserScenarioAction, { readonly action: "drag_start" }>,
+  options: { readonly timeout?: number },
+): Promise<void> => {
+  const locator = resolveLocator(page, action.locator);
+  await locator.hover({
+    ...options,
+    ...(action.offset === undefined ? {} : { position: action.offset }),
+  });
+  const start = await locatorPoint(locator, action.offset, options);
+  await page.mouse.down();
+  // Record before moving so a failed lift still releases the held button.
+  activeDrags.set(page, start);
+  if (action.threshold_px === 0) return;
+  const lifted = { x: start.x + action.threshold_px, y: start.y };
+  await page.mouse.move(lifted.x, lifted.y, {
+    steps: Math.max(1, Math.ceil(action.threshold_px / 4)),
+  });
+  activeDrags.set(page, lifted);
+};
+
+const moveDrag = async (
+  page: Page,
+  action: Extract<BrowserScenarioAction, { readonly action: "drag_move" }>,
+  options: { readonly timeout?: number },
+): Promise<void> => {
+  const from = heldDrag(page, action.action);
+  const { target } = action;
+  const to =
+    target.kind === "delta"
+      ? { x: from.x + target.x, y: from.y + target.y }
+      : await locatorPoint(
+          resolveLocator(page, target.locator),
+          target.offset,
+          options,
+        );
+  await page.mouse.move(to.x, to.y, { steps: action.steps });
+  activeDrags.set(page, to);
+};
+
+const endDrag = async (page: Page, mode: "drop" | "cancel"): Promise<void> => {
+  heldDrag(page, "drag_end");
+  activeDrags.delete(page);
+  try {
+    // Escape aborts native and pointer-driven drags before the button is
+    // released, so the release does not drop.
+    if (mode === "cancel") await page.keyboard.press("Escape");
+  } finally {
+    await page.mouse.up();
+  }
+};
+
+/**
+ * Release a drag left held by a failed or truncated scenario without dropping.
+ * Returns whether a drag was active.
+ */
+export const releasePlaywrightScenarioDrag = async (
+  page: Page,
+): Promise<boolean> => {
+  if (!activeDrags.has(page)) return false;
+  await endDrag(page, "cancel");
+  return true;
+};
+
 interface PerformActionInput {
   readonly page: Page;
   readonly action: BrowserScenarioAction;
@@ -94,6 +195,15 @@ export const performPlaywrightScenarioAction = async (
       return;
     case "hover":
       await resolveLocator(page, action.locator).hover(options);
+      return;
+    case "drag_start":
+      await startDrag(page, action, options);
+      return;
+    case "drag_move":
+      await moveDrag(page, action, options);
+      return;
+    case "drag_end":
+      await endDrag(page, action.mode);
       return;
     case "wait_for":
       await resolveLocator(page, action.locator).waitFor({

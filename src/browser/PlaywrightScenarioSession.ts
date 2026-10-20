@@ -12,6 +12,7 @@ import {
 } from "./PlaywrightScenarioBrowser.js";
 import {
   performPlaywrightScenarioAction,
+  releasePlaywrightScenarioDrag,
   scenarioActionBoundaryMs,
 } from "./PlaywrightScenarioActions.js";
 import { capturePlaywrightStepArtifacts } from "./PlaywrightScenarioArtifacts.js";
@@ -171,9 +172,7 @@ export class PlaywrightScenarioSession implements BrowserScenarioSessionPort {
       return session;
     } catch (cause: unknown) {
       let cleanup:
-        | "terminated-owned-process"
-        | "disconnected-external"
-        | "incomplete";
+        "terminated-owned-process" | "disconnected-external" | "incomplete";
       let cleanupFailure: { readonly cause: unknown } | undefined;
       try {
         cleanup = await session.close(true);
@@ -407,10 +406,25 @@ export class PlaywrightScenarioSession implements BrowserScenarioSessionPort {
     );
   }
 
+  /**
+   * IMPORTANT: an attached browser outlives the session, so a drag held by a
+   * failed step must be cancelled (never dropped) before disconnecting.
+   */
+  async #releaseHeldDrag(): Promise<{ readonly cause: unknown } | undefined> {
+    if (this.opened.cleanup.browserClosed) return undefined;
+    try {
+      await releasePlaywrightScenarioDrag(this.opened.page);
+      return undefined;
+    } catch (failure: unknown) {
+      return { cause: failure };
+    }
+  }
+
   async close(stopLoading = this.signal?.aborted === true) {
     let storageFailure: { readonly cause: unknown } | undefined;
     let policyFailure: { readonly cause: unknown } | undefined;
     let browserFailure: { readonly cause: unknown } | undefined;
+    const dragFailure = await this.#releaseHeldDrag();
     if (stopLoading && this.storage === undefined)
       this.#policyStopsLoading = true;
     if (!this.#storageReleased) {
@@ -444,6 +458,7 @@ export class PlaywrightScenarioSession implements BrowserScenarioSessionPort {
     }
     if (this.opened.cleanup.browserClosed) this.#storageReleased = true;
     throwCleanupFailures([
+      ...(dragFailure === undefined ? [] : [dragFailure.cause]),
       ...(policyFailure === undefined ? [] : [policyFailure.cause]),
       ...(this.#storageReleased || storageFailure === undefined
         ? []

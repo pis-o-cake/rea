@@ -163,6 +163,28 @@ const locatorSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
+const pointerOffsetSchema = z
+  .strictObject({
+    x: z.number().finite(),
+    y: z.number().finite(),
+  })
+  .describe(
+    "CSS-pixel point relative to the element's top-left corner; omitted means the element center.",
+  );
+
+const dragTargetSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("locator"),
+    locator: locatorSchema,
+    offset: pointerOffsetSchema.optional(),
+  }),
+  z.strictObject({
+    kind: z.literal("delta"),
+    x: z.number().finite(),
+    y: z.number().finite(),
+  }),
+]);
+
 const stepBase = {
   step_id: scenarioIdentifierSchema,
   timeout_ms: z
@@ -216,6 +238,44 @@ export const browserScenarioActionSchema = z.discriminatedUnion("action", [
     ...stepBase,
     action: z.literal("hover"),
     locator: locatorSchema,
+  }),
+  z.strictObject({
+    ...stepBase,
+    action: z.literal("drag_start"),
+    locator: locatorSchema,
+    offset: pointerOffsetSchema.optional(),
+    threshold_px: z
+      .number()
+      .int()
+      .min(0)
+      .default(8)
+      .describe(
+        "Pointer travel after pressing the button so drag libraries recognize a drag; 0 presses without moving.",
+      ),
+  }),
+  z.strictObject({
+    ...stepBase,
+    action: z.literal("drag_move"),
+    target: dragTargetSchema.describe(
+      "Move to a locator point or by a delta from the current pointer position.",
+    ),
+    steps: z
+      .number()
+      .int()
+      .min(1)
+      .default(10)
+      .describe(
+        "Intermediate pointer moves, so dragover handlers observe a path.",
+      ),
+  }),
+  z.strictObject({
+    ...stepBase,
+    action: z.literal("drag_end"),
+    mode: z
+      .enum(["drop", "cancel"])
+      .describe(
+        "drop releases the button at the current point; cancel presses Escape before releasing so the page aborts the drag without a drop.",
+      ),
   }),
   z.strictObject({
     ...stepBase,
